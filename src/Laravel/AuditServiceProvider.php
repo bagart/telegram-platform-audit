@@ -88,6 +88,11 @@ class AuditServiceProvider extends ServiceProvider
 
         $this->loadRoutesFrom(__DIR__ . '/../../routes/web.php');
 
+        // Event-listener mappings
+        $this->app->booted(function (): void {
+            $this->registerEventListeners();
+        });
+
         if ($this->app->runningInConsole()) {
             $this->commands([AuditPruneCommand::class]);
 
@@ -98,5 +103,50 @@ class AuditServiceProvider extends ServiceProvider
                     ->at('03:00');
             });
         }
+    }
+
+    private function registerEventListeners(): void
+    {
+        $events = $this->app->make('events');
+
+        // Access control events
+        $events->listen(
+            \BAGArt\TelegramBotAccess\Events\GrantCreated::class,
+            RecordAccessControlEvents::class . '@handleGrantCreated',
+        );
+        $events->listen(
+            \BAGArt\TelegramBotAccess\Events\GrantRevoked::class,
+            RecordAccessControlEvents::class . '@handleGrantRevoked',
+        );
+
+        // Bot lifecycle events (management module)
+        $events->listen(
+            \BAGArt\TelegramBotManagement\Events\BotCreated::class,
+            RecordModuleLifecycleEvents::class . '@handleBotCreated',
+        );
+        $events->listen(
+            \BAGArt\TelegramBotManagement\Events\BotDeleted::class,
+            RecordModuleLifecycleEvents::class . '@handleBotDeleted',
+        );
+        $events->listen(
+            \BAGArt\TelegramBotManagement\Events\BotTokenRotated::class,
+            RecordModuleLifecycleEvents::class . '@handleBotTokenRotated',
+        );
+
+        // Module lifecycle events (engine module)
+        $events->listen(
+            \BAGArt\TelegramModuleEngine\Events\BotModuleEnabled::class,
+            RecordModuleLifecycleEvents::class . '@handleBotModuleEnabled',
+        );
+        $events->listen(
+            \BAGArt\TelegramModuleEngine\Events\BotModuleDisabled::class,
+            RecordModuleLifecycleEvents::class . '@handleBotModuleDisabled',
+        );
+
+        // Module enablement/settings events (management module)
+        $events->listen(
+            \BAGArt\TelegramBotManagement\Events\BotModuleSettingChanged::class,
+            RecordModuleLifecycleEvents::class . '@handleBotModuleSettingChanged',
+        );
     }
 }

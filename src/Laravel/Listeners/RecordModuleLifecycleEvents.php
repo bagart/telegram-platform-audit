@@ -9,13 +9,16 @@ use BAGArt\TelegramBotAudit\AuditEntry;
 use BAGArt\TelegramBotAudit\AuditSinkContract;
 use BAGArt\TelegramBotAudit\AuditTarget;
 use BAGArt\TelegramBotAudit\CorrelationContext;
+use BAGArt\TelegramBotManagement\Events\BotCreated;
+use BAGArt\TelegramBotManagement\Events\BotDeleted;
+use BAGArt\TelegramBotManagement\Events\BotModuleSettingChanged;
+use BAGArt\TelegramBotManagement\Events\BotTokenRotated;
+use BAGArt\TelegramModuleEngine\Events\BotModuleDisabled;
+use BAGArt\TelegramModuleEngine\Events\BotModuleEnabled;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Records audit entries for module lifecycle events.
- *
- * This listener can be wired to module enable/disable events
- * from the Telegram Module Engine.
+ * Records audit entries for bot and module lifecycle events.
  */
 final class RecordModuleLifecycleEvents
 {
@@ -24,95 +27,118 @@ final class RecordModuleLifecycleEvents
         private readonly CorrelationContext $correlation,
     ) {}
 
-    /**
-     * Record a module enable event.
-     */
-    public function handleModuleEnabled(object $event): void
+    public function handleBotCreated(BotCreated $event): void
+    {
+        $this->record(
+            operation: 'bot.created',
+            botId: $event->botId,
+            subjectType: 'bot',
+            subjectId: $event->botId,
+            newState: ['secret_token' => $event->secretToken !== '' ? '[set]' : '[empty]'],
+            source: 'management',
+        );
+    }
+
+    public function handleBotDeleted(BotDeleted $event): void
+    {
+        $this->record(
+            operation: 'bot.deleted',
+            botId: $event->botId,
+            subjectType: 'bot',
+            subjectId: $event->botId,
+            source: 'management',
+        );
+    }
+
+    public function handleBotTokenRotated(BotTokenRotated $event): void
+    {
+        $this->record(
+            operation: 'bot.token.rotated',
+            botId: $event->botId,
+            subjectType: 'bot',
+            subjectId: $event->botId,
+            newState: ['secret_token' => '[rotated]'],
+            source: 'management',
+        );
+    }
+
+    public function handleBotModuleEnabled(BotModuleEnabled $event): void
     {
         $this->record(
             operation: 'module.runtime.enabled',
-            event: $event,
-            actorType: AuditActor::TYPE_USER,
+            botId: $event->botId,
+            subjectType: 'module',
+            subjectId: $event->moduleId,
+            newState: ['module_id' => $event->moduleId, 'revision' => $event->revision],
+            source: 'module-engine',
         );
     }
 
-    /**
-     * Record a module disable event.
-     */
-    public function handleModuleDisabled(object $event): void
+    public function handleBotModuleDisabled(BotModuleDisabled $event): void
     {
         $this->record(
             operation: 'module.runtime.disabled',
-            event: $event,
-            actorType: AuditActor::TYPE_USER,
+            botId: $event->botId,
+            subjectType: 'module',
+            subjectId: $event->moduleId,
+            newState: ['module_id' => $event->moduleId, 'revision' => $event->revision],
+            source: 'module-engine',
         );
     }
 
-    /**
-     * Record a module settings change event.
-     */
-    public function handleModuleSettingsChanged(object $event): void
+    public function handleBotModuleSettingChanged(BotModuleSettingChanged $event): void
     {
+        $operation = $event->isEnabled !== null
+            ? 'module.enablement.changed'
+            : 'module.settings.changed';
+
         $this->record(
-            operation: 'module.settings.changed',
-            event: $event,
-            actorType: AuditActor::TYPE_USER,
+            operation: $operation,
+            botId: $event->botId,
+            subjectType: 'module',
+            subjectId: $event->moduleId,
+            newState: [
+                'module_id' => $event->moduleId,
+                'bot_id' => $event->botId,
+                'chat_id' => $event->chatId,
+                'is_enabled' => $event->isEnabled,
+                'has_settings' => $event->settings !== null,
+            ],
+            source: 'management',
         );
     }
 
-    /**
-     * @param  string  $operation
-     */
     private function record(
         string $operation,
-        object $event,
-        string $actorType,
+        ?string $botId,
+        string $subjectType,
+        string $subjectId,
+        ?array $oldState = null,
+        ?array $newState = null,
+        string $source = 'unknown',
     ): void {
         try {
-            // Extract event properties via reflection or interface
-            $moduleId = $this->extractProperty($event, 'moduleId') ?? 'unknown';
-            $botId = $this->extractProperty($event, 'botId');
-            $actorId = $this->extractProperty($event, 'actorId') ?? 'system';
-
-            $entry = new AuditEntry(
+            $entry = AuditEntry::now(
                 id: AuditEntry::generateId(),
-                actor: new AuditActor(
-                    type: $actorType,
-                    id: (string) $actorId,
-                ),
+                actor: new AuditActor(type: AuditActor::TYPE_SYSTEM, id: 'system'),
                 target: new AuditTarget(
-                    botId: $botId ? (string) $botId : null,
-                    subjectType: 'module',
-                    subjectId: (string) $moduleId,
+                    botId: $botId,
+                    subjectType: $subjectType,
+                    subjectId: $subjectId,
                 ),
                 operation: $operation,
-                oldState: null,
-                newState: [
-                    'module_id' => $moduleId,
-                    'bot_id' => $botId,
-                ],
-                source: 'module-engine',
+                oldState: $oldState,
+                newState: $newState,
+                source: $source,
                 correlationId: $this->correlation->id(),
             );
 
             $this->sink->append($entry);
         } catch (\Throwable $e) {
-            Log::warning('Failed to record module lifecycle audit entry', [
+            Log::warning('Failed to record lifecycle audit entry', [
                 'operation' => $operation,
                 'error' => $e->getMessage(),
             ]);
         }
-    }
-
-    /**
-     * Extract a property from an event object.
-     */
-    private function extractProperty(object $event, string $name): mixed
-    {
-        if (property_exists($event, $name)) {
-            return $event->$name;
-        }
-
-        return null;
     }
 }
