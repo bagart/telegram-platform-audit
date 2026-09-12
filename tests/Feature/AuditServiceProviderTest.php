@@ -11,7 +11,7 @@ use BAGArt\TelegramBotAudit\CorrelationContext;
 use BAGArt\TelegramBotAudit\DefaultAuditFailurePolicyResolver;
 use BAGArt\TelegramBotAudit\Laravel\DatabaseAuditQuery;
 use BAGArt\TelegramBotAudit\Laravel\DatabaseAuditSink;
-use BAGArt\TelegramBotAudit\StaticCorrelationContext;
+use BAGArt\TelegramBotAudit\MutableCorrelationContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -37,7 +37,7 @@ final class AuditServiceProviderTest extends TestCase
     {
         $ctx = $this->app->make(CorrelationContext::class);
 
-        self::assertInstanceOf(StaticCorrelationContext::class, $ctx);
+        self::assertInstanceOf(MutableCorrelationContext::class, $ctx);
     }
 
     public function test_bind_failure_policy_resolver(): void

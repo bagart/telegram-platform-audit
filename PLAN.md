@@ -1,11 +1,10 @@
 # Audit Module — Remaining Work
 
-> Revised 2026-09-04 after phase audit.
-> Phases 1–3 shipped (domain DTOs, contracts, Laravel integration, DB storage, prune command).
+> Revised 2026-09-12. Phases 1–3 shipped. Phase 4 partially done (listeners, middleware, correlation). Phase 7 done (scheduling).
 
 ---
 
-## Current State
+## Current State (~65%)
 
 | Aspect | Status |
 |---|---|
@@ -13,28 +12,30 @@
 | Contracts (`AuditSinkContract`, `AuditQueryContract`) | ✅ |
 | `InMemoryAuditSink` | ✅ |
 | `AuditFailurePolicy` + `DefaultAuditFailurePolicyResolver` | ✅ |
-| `CorrelationContext` + `StaticCorrelationContext` | ✅ |
+| `CorrelationContext` + `MutableCorrelationContext` + `StaticCorrelationContext` | ✅ |
+| `CorrelationMiddleware` (HTTP request correlation) | ✅ |
 | `AuditServiceProvider` (singleton bindings, config, migrations) | ✅ |
 | `config/audit.php` | ✅ |
 | Database migration (`audit_entries`) | ✅ |
 | `DatabaseAuditSink` + `DatabaseAuditQuery` | ✅ |
 | `RetentionPruner` + `audit:prune` command | ✅ |
-| Unit + integration tests | ✅ |
-| Authoritative audit wiring (command → append) | ❌ |
-| Observational audit wiring (event → listener) | ❌ |
-| Cross-module integration | ❌ |
-| Query/Read API (admin controller) | ❌ |
-| Observability (metrics, health) | ❌ |
-| `composer.prod.json` entry | ❌ |
-| README | ❌ |
+| Schedule (daily at 03:00) | ✅ |
+| Observational audit: `RecordAccessControlEvents` listener | ✅ |
+| Observational audit: `RecordModuleLifecycleEvents` listener | ✅ |
+| Unit + integration tests (53+ tests) | ✅ |
+| README | ✅ |
+| Authoritative audit wiring (synchronous in transaction) | ❌ Phase 4.1 |
+| Full lifecycle event mapping (all engine events) | ❌ Phase 4.3 |
+| Query/Read API (admin controller) | ❌ Phase 5 |
+| Cross-module integration (management, menu, proxy) | ❌ Phase 6 |
+| `composer.prod.json` entry | ❌ Phase 7 |
+| Observability (metrics, health probes) | ❌ Phase 8 |
 
 ---
 
 ## Remaining Phases
 
-### Phase 4 — Audit Wiring (Authoritative + Observational)
-
-Goal: imperative and event-driven audit paths produce entries.
+### Phase 4 — Audit Wiring (partial)
 
 **4.1 Authoritative audit** — for security-sensitive operations, audit is a
 synchronous side effect of the command (NOT a listener):
@@ -58,14 +59,7 @@ Callers check `AuditFailurePolicyResolver::resolve()` before append:
 Used by: access decisions, bot token rotation, bot deletion, role grants,
 security-critical module operations.
 
-**4.2 Observational audit** — lifecycle telemetry and non-critical operations:
-
-Create `src/Laravel/Listeners/RecordLifecycleAudit.php`:
-- Receives lifecycle event, extracts `moduleId`, `botId`, `actor`, `operationId`.
-- Builds `AuditEntry`, appends via `AuditSinkContract` with `FAIL_OPEN`.
-- Registered in `AuditServiceProvider::boot()` for each lifecycle event class.
-
-**4.3 Lifecycle event mapping:**
+**4.3 Remaining lifecycle event mapping:**
 
 | Engine Event | Audit Operation | Mode |
 |---|---|---|
@@ -79,17 +73,9 @@ Create `src/Laravel/Listeners/RecordLifecycleAudit.php`:
 | `ModuleRuntimeFailed` | `module.runtime.failed` | Observational |
 | `ModuleRuntimeRecovered` | `module.runtime.recovered` | Observational |
 
-**4.4 Correlation wiring:**
-- HTTP middleware sets `CorrelationContext` from `X-Correlation-Id` (or ULID).
-- CLI commands set context from command signature or ULID.
-- Queue workers set context from job properties.
-- `AuditEntry::now()` accepts `CorrelationContext`.
-
 ---
 
 ### Phase 5 — Query/Read API
-
-Goal: admin UI, Telegram bot, CLI can query audit history.
 
 - `AuditQueryContract` + `AuditQueryFilter` exist but need an HTTP entry point.
 - Create `src/Laravel/Http/Controllers/AuditController.php`:
@@ -101,8 +87,6 @@ Goal: admin UI, Telegram bot, CLI can query audit history.
 ---
 
 ### Phase 6 — Cross-Module Integration
-
-Goal: all platform modules actually use the audit system.
 
 | Module | Integration |
 |---|---|
@@ -116,12 +100,6 @@ Goal: all platform modules actually use the audit system.
 
 ### Phase 7 — Retention & Housekeeping
 
-`RetentionPruner` + `audit:prune` command shipped. Remaining:
-
-- Register schedule in `AuditServiceProvider::boot()`:
-  ```php
-  $schedule->command('audit:prune')->daily();
-  ```
 - Add `composer.prod.json` entry.
 
 ---
@@ -139,18 +117,6 @@ Goal: all platform modules actually use the audit system.
 
 Deferred until concrete threat model / compliance requirement emerges.
 `sequence` column preserves the option. See ADR-001 in git history.
-
----
-
-## Priority Matrix
-
-| Phase | Priority | Depends On |
-|---|---|---|
-| 4 — Audit Wiring | **P1** | Phases 1–3 (done) |
-| 5 — Query/Read API | **P1** | Phase 3 (done) |
-| 6 — Cross-Module Integration | **P1** | Phases 1–4 |
-| 7 — Retention & Housekeeping | **P2** | Phase 3 (done) |
-| 8 — Observability | **P2** | Phase 2 (done) |
 
 ---
 

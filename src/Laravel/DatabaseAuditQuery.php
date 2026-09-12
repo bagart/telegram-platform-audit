@@ -51,8 +51,6 @@ final class DatabaseAuditQuery implements AuditQueryContract
 
         if ($filter->botId !== null) {
             $query->where('bot_id', $filter->botId);
-        } else {
-            $query->whereNull('bot_id');
         }
 
         if ($filter->actorType !== null) {
@@ -98,9 +96,9 @@ final class DatabaseAuditQuery implements AuditQueryContract
         return $query;
     }
 
-    private function toDomain(object $row): AuditEntryDTO
+    private function toDomain(object $row): AuditEntry
     {
-        return new AuditEntryDTO(
+        return new AuditEntry(
             id: (string) $row->id,
             actor: new AuditActor(
                 type: (string) $row->actor_type,

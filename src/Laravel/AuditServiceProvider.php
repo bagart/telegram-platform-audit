@@ -14,7 +14,7 @@ use BAGArt\TelegramBotAudit\Laravel\Console\Commands\AuditPruneCommand;
 use BAGArt\TelegramBotAudit\Laravel\Listeners\RecordAccessControlEvents;
 use BAGArt\TelegramBotAudit\Laravel\Listeners\RecordModuleLifecycleEvents;
 use BAGArt\TelegramBotAudit\MutableCorrelationContext;
-use BAGArt\TelegramBotAudit\StaticCorrelationContext;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 
 /**
@@ -59,12 +59,7 @@ class AuditServiceProvider extends ServiceProvider
             };
         });
 
-        // Mutable context for HTTP middleware, static for CLI/queue
         $this->app->singleton(CorrelationContext::class, function () {
-            if ($this->app->runningInConsole() && ! $this->app->runningArtisan()) {
-                return new StaticCorrelationContext();
-            }
-
             return new MutableCorrelationContext();
         });
 
@@ -90,6 +85,8 @@ class AuditServiceProvider extends ServiceProvider
         ], 'audit-config');
 
         $this->loadMigrationsFrom(__DIR__ . '/../../database/migrations');
+
+        $this->loadRoutesFrom(__DIR__ . '/../../routes/web.php');
 
         if ($this->app->runningInConsole()) {
             $this->commands([AuditPruneCommand::class]);
