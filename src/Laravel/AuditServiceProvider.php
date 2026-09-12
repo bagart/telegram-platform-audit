@@ -73,6 +73,18 @@ class AuditServiceProvider extends ServiceProvider
             );
         });
 
+        $this->app->singleton(AuditHealthProbe::class, function () {
+            return new AuditHealthProbe(
+                query: $this->app->make(AuditQueryContract::class),
+            );
+        });
+
+        $this->app->singleton(AuditMetricsCollector::class, function () {
+            return new AuditMetricsCollector(
+                query: $this->app->make(AuditQueryContract::class),
+            );
+        });
+
         // Listeners
         $this->app->singleton(RecordAccessControlEvents::class);
         $this->app->singleton(RecordModuleLifecycleEvents::class);

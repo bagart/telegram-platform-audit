@@ -1,10 +1,10 @@
 # Audit Module — Remaining Work
 
-> Revised 2026-09-12. Phases 1–6 shipped. Phase 7 partial (schedule done, composer.prod pending). Phase 8 outstanding.
+> Revised 2026-09-12. Phases 1–7 shipped. Phase 8 (observability) outstanding.
 
 ---
 
-## Current State (~75%)
+## Current State (~85%)
 
 | Aspect | Status |
 |---|---|
@@ -23,50 +23,35 @@
 | Schedule (daily at 03:00) | ✅ |
 | Observational audit: `RecordAccessControlEvents` listener | ✅ |
 | Observational audit: `RecordModuleLifecycleEvents` listener | ✅ |
+| Cross-module event wiring: access, management, engine | ✅ |
 | Admin controller (index + show) | ✅ |
 | `AuditRecording` trait (authoritative helper) | ✅ |
-| Unit + integration tests (58 tests) | ✅ |
+| `composer.prod.json` entry | ✅ |
+| Unit + integration tests (65 tests) | ✅ |
 | README | ✅ |
-| Authoritative audit wiring (synchronous in transaction) | ❌ Phase 4.1 |
-| Full lifecycle event mapping (all engine events) | ❌ Phase 4.3 |
-| Cross-module event subscriptions (management, menu, proxy) | ❌ Phase 6.2 |
-| `composer.prod.json` entry | ❌ Phase 7 |
 | Observability (metrics, health probes) | ❌ Phase 8 |
 
 ---
 
 ## Remaining Phases
 
-### Phase 4 — Audit Wiring (partial)
-
-**4.1 Authoritative audit** — for security-sensitive operations, audit is a
-synchronous side effect of the command (NOT a listener). Modules use
-`AuditRecording` trait for this.
-
-**4.3 Remaining lifecycle event mapping** — engine events need to be
-dispatched by the module engine before the audit module can subscribe.
-
-### Phase 6.2 — Cross-Module Event Subscriptions
-
-Requires the following modules to dispatch domain events:
-
-| Module | Events needed |
-|---|---|
-| Management | `BotCreated`, `BotDeleted`, `BotTokenRotated` |
-| Engine | `BotModuleEnabled`, `BotModuleDisabled`, `ModuleRuntimeFailed` |
-| Menu | `RoleGranted`, `RoleRevoked` |
-
-Once events exist, the audit module registers listeners in `AuditServiceProvider::boot()`.
-
-### Phase 7 — Retention & Housekeeping
-
-- Add `composer.prod.json` entry.
-
 ### Phase 8 — Observability
 
 - Counters: `audit.entries.appended` (by operation, by bot), `audit.entries.failed` (by operation, by policy).
 - Histogram: `audit.append.latency`.
 - Sink write/read health as platform health probe.
+
+---
+
+## Cross-Module Event Integration
+
+| Module | Events Dispatched | Listener |
+|---|---|---|
+| Access | `GrantCreated`, `GrantRevoked` | `RecordAccessControlEvents` |
+| Management | `BotCreated`, `BotDeleted`, `BotTokenRotated`, `BotModuleSettingChanged` | `RecordModuleLifecycleEvents` |
+| Engine | `BotModuleEnabled`, `BotModuleDisabled` | `RecordModuleLifecycleEvents` |
+
+All event-listener mappings registered in `AuditServiceProvider::boot()`.
 
 ---
 
