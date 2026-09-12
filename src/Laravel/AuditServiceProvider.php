@@ -11,6 +11,9 @@ use BAGArt\TelegramBotAudit\CorrelationContext;
 use BAGArt\TelegramBotAudit\DefaultAuditFailurePolicyResolver;
 use BAGArt\TelegramBotAudit\InMemoryAuditSink;
 use BAGArt\TelegramBotAudit\Laravel\Console\Commands\AuditPruneCommand;
+use BAGArt\TelegramBotAudit\Laravel\Listeners\RecordAccessControlEvents;
+use BAGArt\TelegramBotAudit\Laravel\Listeners\RecordModuleLifecycleEvents;
+use BAGArt\TelegramBotAudit\MutableCorrelationContext;
 use BAGArt\TelegramBotAudit\StaticCorrelationContext;
 use Illuminate\Support\ServiceProvider;
 
@@ -56,8 +59,13 @@ class AuditServiceProvider extends ServiceProvider
             };
         });
 
+        // Mutable context for HTTP middleware, static for CLI/queue
         $this->app->singleton(CorrelationContext::class, function () {
-            return new StaticCorrelationContext();
+            if ($this->app->runningInConsole() && ! $this->app->runningArtisan()) {
+                return new StaticCorrelationContext();
+            }
+
+            return new MutableCorrelationContext();
         });
 
         $this->app->singleton(AuditFailurePolicyResolver::class, function () {
@@ -69,6 +77,10 @@ class AuditServiceProvider extends ServiceProvider
                 defaultPolicy: $default,
             );
         });
+
+        // Listeners
+        $this->app->singleton(RecordAccessControlEvents::class);
+        $this->app->singleton(RecordModuleLifecycleEvents::class);
     }
 
     public function boot(): void
@@ -81,6 +93,13 @@ class AuditServiceProvider extends ServiceProvider
 
         if ($this->app->runningInConsole()) {
             $this->commands([AuditPruneCommand::class]);
+
+            // Schedule retention pruner
+            $this->app->afterResolving('scheduler', function ($scheduler) {
+                $scheduler->command('audit:prune')
+                    ->daily()
+                    ->at('03:00');
+            });
         }
     }
 }

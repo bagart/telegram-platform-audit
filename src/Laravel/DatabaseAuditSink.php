@@ -12,7 +12,6 @@ use Illuminate\Support\Facades\DB;
  * Database-backed append-only audit sink.
  *
  * Persists audit entries to the audit_entries table via Query Builder.
- * Phase 3 will add full implementation with proper migration.
  */
 final class DatabaseAuditSink implements AuditSinkContract
 {

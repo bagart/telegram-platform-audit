@@ -6,7 +6,6 @@ namespace BAGArt\TelegramBotAudit\Laravel;
 
 use BAGArt\TelegramBotAudit\AuditActor;
 use BAGArt\TelegramBotAudit\AuditEntry;
-use BAGArt\TelegramBotAudit\AuditEntry as AuditEntryDTO;
 use BAGArt\TelegramBotAudit\AuditQueryContract;
 use BAGArt\TelegramBotAudit\AuditQueryFilter;
 use BAGArt\TelegramBotAudit\AuditTarget;
@@ -17,7 +16,6 @@ use Illuminate\Support\Facades\DB;
  * Database-backed audit query implementation.
  *
  * Reads audit entries from the audit_entries table.
- * Phase 3 will add full implementation with proper model and scopes.
  */
 final class DatabaseAuditQuery implements AuditQueryContract
 {
