@@ -52,6 +52,14 @@ final readonly class AuditEntry implements JsonSerializable
     }
 
     /**
+     * Generate a unique entry ID.
+     */
+    public static function generateId(): string
+    {
+        return bin2hex(random_bytes(16));
+    }
+
+    /**
      * Build an entry stamped with the current time.
      */
     public static function now(
