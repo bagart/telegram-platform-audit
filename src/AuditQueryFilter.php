@@ -28,6 +28,7 @@ final readonly class AuditQueryFilter
      * @param  int  $offset  Number of entries to skip.
      */
     public function __construct(
+        public ?string $id = null,
         public ?string $botId = null,
         public ?string $actorType = null,
         public ?string $actorId = null,

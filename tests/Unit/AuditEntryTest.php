@@ -60,7 +60,7 @@ final class AuditEntryTest extends TestCase
     {
         $json = $this->entry()->jsonSerialize();
 
-        self::assertSame(1, $json['schemaVersion']);
+        self::assertSame(2, $json['schemaVersion']);
         self::assertSame(AuditEntry::SCHEMA_VERSION, AuditEntry::fromJson($json)->jsonSerialize()['schemaVersion']);
     }
 
@@ -81,12 +81,12 @@ final class AuditEntryTest extends TestCase
     public function test_entry_has_no_credential_fields(): void
     {
         $properties = array_map(
-            static fn(\ReflectionProperty $property): string => $property->getName(),
+            static fn (\ReflectionProperty $property): string => $property->getName(),
             (new \ReflectionClass(AuditEntry::class))->getProperties(),
         );
 
         self::assertSame(
-            ['id', 'actor', 'target', 'operation', 'oldState', 'newState', 'source', 'occurredAt', 'correlationId', 'sourceVersion', 'metadata'],
+            ['id', 'actor', 'target', 'operation', 'oldState', 'newState', 'source', 'occurredAt', 'correlationId', 'sourceVersion', 'metadata', 'hash', 'prevHash'],
             $properties,
         );
 
@@ -204,7 +204,7 @@ final class AuditEntryTest extends TestCase
     private function propertyNames(string $class): array
     {
         return array_map(
-            static fn(\ReflectionProperty $property): string => $property->getName(),
+            static fn (\ReflectionProperty $property): string => $property->getName(),
             (new \ReflectionClass($class))->getProperties(),
         );
     }

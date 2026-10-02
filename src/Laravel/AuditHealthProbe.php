@@ -15,7 +15,8 @@ final readonly class AuditHealthProbe
 {
     public function __construct(
         private AuditQueryContract $query,
-    ) {}
+    ) {
+    }
 
     /**
      * @return array{status: string, entries_total: int, entries_last_hour: int, entries_last_day: int, driver: string}

@@ -21,7 +21,7 @@ use RuntimeException;
  */
 final readonly class AuditEntry implements JsonSerializable
 {
-    public const int SCHEMA_VERSION = 1;
+    public const int SCHEMA_VERSION = 2;
 
     /**
      * @param  string  $id  Unique entry ID (e.g. ULID/UUID assigned by the producer).
@@ -35,6 +35,8 @@ final readonly class AuditEntry implements JsonSerializable
      * @param  string|null  $correlationId  Correlation ID propagated from request context.
      * @param  string|null  $sourceVersion  Version of the module/lib that produced this entry.
      * @param  array<string, mixed>|null  $metadata  Free-form structured data (reason, request_ip, module_version); credentials forbidden.
+     * @param  string|null  $hash  SHA-256 hash of this entry (computed by sink).
+     * @param  string|null  $prevHash  Hash of the previous entry in the chain.
      */
     public function __construct(
         public string $id,
@@ -48,6 +50,8 @@ final readonly class AuditEntry implements JsonSerializable
         public ?string $correlationId = null,
         public ?string $sourceVersion = null,
         public ?array $metadata = null,
+        public ?string $hash = null,
+        public ?string $prevHash = null,
     ) {
     }
 
@@ -73,6 +77,8 @@ final readonly class AuditEntry implements JsonSerializable
         ?string $correlationId = null,
         ?string $sourceVersion = null,
         ?array $metadata = null,
+        ?string $hash = null,
+        ?string $prevHash = null,
     ): self {
         return new self(
             id: $id,
@@ -86,6 +92,8 @@ final readonly class AuditEntry implements JsonSerializable
             correlationId: $correlationId,
             sourceVersion: $sourceVersion,
             metadata: $metadata,
+            hash: $hash,
+            prevHash: $prevHash,
         );
     }
 
@@ -116,6 +124,8 @@ final readonly class AuditEntry implements JsonSerializable
             'correlationId' => $this->correlationId,
             'sourceVersion' => $this->sourceVersion,
             'metadata' => $this->metadata,
+            'hash' => $this->hash,
+            'prevHash' => $this->prevHash,
             'schemaVersion' => self::SCHEMA_VERSION,
         ];
     }
@@ -131,6 +141,7 @@ final readonly class AuditEntry implements JsonSerializable
 
         return match ($schemaVersion) {
             1 => self::fromJsonV1($data),
+            2 => self::fromJsonV2($data),
             default => throw new RuntimeException("Unsupported AuditEntry schemaVersion: {$schemaVersion}"),
         };
     }
@@ -154,6 +165,30 @@ final readonly class AuditEntry implements JsonSerializable
             correlationId: isset($data['correlationId']) ? (string)$data['correlationId'] : null,
             sourceVersion: isset($data['sourceVersion']) ? (string) $data['sourceVersion'] : null,
             metadata: isset($data['metadata']) ? (array) $data['metadata'] : null,
+        );
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private static function fromJsonV2(array $data): self
+    {
+        $operationValue = (string) $data['operation'];
+
+        return new self(
+            id: (string)$data['id'],
+            actor: AuditActor::fromArray((array)$data['actor']),
+            target: AuditTarget::fromArray((array)$data['target']),
+            operation: Operation::tryFrom($operationValue) ?? $operationValue,
+            oldState: isset($data['oldState']) ? (array)$data['oldState'] : null,
+            newState: isset($data['newState']) ? (array)$data['newState'] : null,
+            source: (string)$data['source'],
+            occurredAt: (string)($data['occurredAt'] ?? (new DateTimeImmutable())->format(DateTimeImmutable::ATOM)),
+            correlationId: isset($data['correlationId']) ? (string)$data['correlationId'] : null,
+            sourceVersion: isset($data['sourceVersion']) ? (string) $data['sourceVersion'] : null,
+            metadata: isset($data['metadata']) ? (array) $data['metadata'] : null,
+            hash: isset($data['hash']) ? (string) $data['hash'] : null,
+            prevHash: isset($data['prevHash']) ? (string) $data['prevHash'] : null,
         );
     }
 }
