@@ -64,6 +64,21 @@ final class RetentionPrunerTest extends TestCase
         self::assertGreaterThan(0, $remaining);
     }
 
+    public function test_prune_logs_warning_when_hash_chain_breaks(): void
+    {
+        $this->seedEntries();
+
+        \Illuminate\Support\Facades\Log::shouldReceive('warning')
+            ->once()
+            ->with(
+                'Audit pruning may break hash chain — run audit:verify after pruning',
+                \Mockery::on(fn (array $ctx): bool => $ctx['pruned'] > 0 && $ctx['retention_days'] === 30),
+            );
+
+        $pruner = $this->app->make(RetentionPruner::class);
+        $pruner->prune(days: 30);
+    }
+
     private function seedEntries(): void
     {
         $sink = $this->app->make(\BAGArt\TelegramBotAudit\AuditSinkContract::class);

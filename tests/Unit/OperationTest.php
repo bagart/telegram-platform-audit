@@ -19,7 +19,7 @@ final class OperationTest extends TestCase
 
     public function test_enum_values_are_unique(): void
     {
-        $values = array_map(static fn(Operation $op): string => $op->value, Operation::cases());
+        $values = array_map(static fn (Operation $op): string => $op->value, Operation::cases());
         self::assertSame($values, array_unique($values));
     }
 

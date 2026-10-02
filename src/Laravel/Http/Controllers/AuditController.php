@@ -9,7 +9,6 @@ use BAGArt\TelegramBotAudit\AuditQueryFilter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
-use Illuminate\Support\Facades\DB;
 
 /**
  * Admin controller for querying audit entries.
@@ -21,7 +20,8 @@ final class AuditController extends Controller
 {
     public function __construct(
         private readonly AuditQueryContract $query,
-    ) {}
+    ) {
+    }
 
     /**
      * Paginated audit entries for a bot (or platform scope).
@@ -68,37 +68,13 @@ final class AuditController extends Controller
      */
     public function show(string $id): JsonResponse
     {
-        $row = DB::table('audit_entries')
-            ->where('id', $id)
-            ->first();
+        $entries = iterator_to_array($this->query->query(new AuditQueryFilter(id: $id, limit: 1)));
+        $entry = $entries[0] ?? null;
 
-        if ($row === null) {
+        if ($entry === null) {
             return response()->json(['error' => 'Audit entry not found'], 404);
         }
 
-        return response()->json([
-            'data' => [
-                'id' => (string) $row->id,
-                'actor' => [
-                    'type' => (string) $row->actor_type,
-                    'id' => (string) $row->actor_id,
-                    'displayName' => $row->actor_display_name,
-                ],
-                'target' => [
-                    'botId' => $row->bot_id,
-                    'subjectType' => (string) $row->subject_type,
-                    'subjectId' => (string) $row->subject_id,
-                    'chatId' => $row->chat_id,
-                ],
-                'operation' => (string) $row->operation,
-                'oldState' => $row->old_state ? json_decode((string) $row->old_state, true, 512, JSON_THROW_ON_ERROR) : null,
-                'newState' => $row->new_state ? json_decode((string) $row->new_state, true, 512, JSON_THROW_ON_ERROR) : null,
-                'source' => (string) $row->source,
-                'occurredAt' => (string) $row->occurred_at,
-                'correlationId' => $row->correlation_id,
-                'sourceVersion' => $row->source_version,
-                'metadata' => $row->metadata ? json_decode((string) $row->metadata, true, 512, JSON_THROW_ON_ERROR) : null,
-            ],
-        ]);
+        return response()->json(['data' => $entry->jsonSerialize()]);
     }
 }

@@ -11,10 +11,10 @@ use BAGArt\TelegramBotAudit\CorrelationContext;
 use BAGArt\TelegramBotAudit\DefaultAuditFailurePolicyResolver;
 use BAGArt\TelegramBotAudit\InMemoryAuditSink;
 use BAGArt\TelegramBotAudit\Laravel\Console\Commands\AuditPruneCommand;
+use BAGArt\TelegramBotAudit\Laravel\Console\Commands\AuditVerifyCommand;
 use BAGArt\TelegramBotAudit\Laravel\Listeners\RecordAccessControlEvents;
 use BAGArt\TelegramBotAudit\Laravel\Listeners\RecordModuleLifecycleEvents;
 use BAGArt\TelegramBotAudit\MutableCorrelationContext;
-use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 
 /**
@@ -34,17 +34,27 @@ class AuditServiceProvider extends ServiceProvider
             'audit',
         );
 
+        $this->app->singleton(AuditCounters::class);
+
+        $this->app->singleton(AuditHasher::class);
+
         $this->app->singleton(AuditSinkContract::class, function () {
             $driver = config('audit.driver', 'database');
 
-            return match ($driver) {
+            $inner = match ($driver) {
                 'database' => new DatabaseAuditSink(
                     connection: config('audit.database.connection'),
                     table: config('audit.database.table', 'audit_entries'),
+                    hasher: $this->app->make(AuditHasher::class),
                 ),
                 'memory' => new InMemoryAuditSink(),
                 default => throw new \RuntimeException("Unknown audit driver: {$driver}"),
             };
+
+            return new CountingAuditSink(
+                inner: $inner,
+                counters: $this->app->make(AuditCounters::class),
+            );
         });
 
         $this->app->singleton(AuditQueryContract::class, function () {
@@ -82,12 +92,25 @@ class AuditServiceProvider extends ServiceProvider
         $this->app->singleton(AuditMetricsCollector::class, function () {
             return new AuditMetricsCollector(
                 query: $this->app->make(AuditQueryContract::class),
+                counters: $this->app->make(AuditCounters::class),
             );
         });
 
         // Listeners
-        $this->app->singleton(RecordAccessControlEvents::class);
-        $this->app->singleton(RecordModuleLifecycleEvents::class);
+        $this->app->singleton(RecordAccessControlEvents::class, function () {
+            return new RecordAccessControlEvents(
+                sink: $this->app->make(AuditSinkContract::class),
+                correlation: $this->app->make(CorrelationContext::class),
+                policyResolver: $this->app->make(AuditFailurePolicyResolver::class),
+            );
+        });
+        $this->app->singleton(RecordModuleLifecycleEvents::class, function () {
+            return new RecordModuleLifecycleEvents(
+                sink: $this->app->make(AuditSinkContract::class),
+                correlation: $this->app->make(CorrelationContext::class),
+                policyResolver: $this->app->make(AuditFailurePolicyResolver::class),
+            );
+        });
     }
 
     public function boot(): void
@@ -106,7 +129,7 @@ class AuditServiceProvider extends ServiceProvider
         });
 
         if ($this->app->runningInConsole()) {
-            $this->commands([AuditPruneCommand::class]);
+            $this->commands([AuditPruneCommand::class, AuditVerifyCommand::class]);
 
             // Schedule retention pruner
             $this->app->afterResolving('scheduler', function ($scheduler) {

@@ -6,6 +6,8 @@ namespace BAGArt\TelegramBotAudit\Laravel\Listeners;
 
 use BAGArt\TelegramBotAudit\AuditActor;
 use BAGArt\TelegramBotAudit\AuditEntry;
+use BAGArt\TelegramBotAudit\AuditFailurePolicy;
+use BAGArt\TelegramBotAudit\AuditFailurePolicyResolver;
 use BAGArt\TelegramBotAudit\AuditSinkContract;
 use BAGArt\TelegramBotAudit\AuditTarget;
 use BAGArt\TelegramBotAudit\CorrelationContext;
@@ -19,13 +21,19 @@ use Illuminate\Support\Facades\Log;
 
 /**
  * Records audit entries for bot and module lifecycle events.
+ *
+ * Uses actor identity from events when available, falls back to
+ * TYPE_SYSTEM. Respects failure policy: on FailClosed, rethrows
+ * as AuditException to block the operation.
  */
 final class RecordModuleLifecycleEvents
 {
     public function __construct(
         private readonly AuditSinkContract $sink,
         private readonly CorrelationContext $correlation,
-    ) {}
+        private readonly AuditFailurePolicyResolver $policyResolver,
+    ) {
+    }
 
     public function handleBotCreated(BotCreated $event): void
     {
@@ -36,6 +44,8 @@ final class RecordModuleLifecycleEvents
             subjectId: $event->botId,
             newState: ['secret_token' => $event->secretToken !== '' ? '[set]' : '[empty]'],
             source: 'management',
+            actorId: $event->actorId,
+            actorType: $event->actorType,
         );
     }
 
@@ -47,6 +57,8 @@ final class RecordModuleLifecycleEvents
             subjectType: 'bot',
             subjectId: $event->botId,
             source: 'management',
+            actorId: $event->actorId,
+            actorType: $event->actorType,
         );
     }
 
@@ -59,6 +71,8 @@ final class RecordModuleLifecycleEvents
             subjectId: $event->botId,
             newState: ['secret_token' => '[rotated]'],
             source: 'management',
+            actorId: $event->actorId,
+            actorType: $event->actorType,
         );
     }
 
@@ -71,6 +85,8 @@ final class RecordModuleLifecycleEvents
             subjectId: $event->moduleId,
             newState: ['module_id' => $event->moduleId, 'revision' => $event->revision],
             source: 'module-engine',
+            actorId: $event->actorId,
+            actorType: $event->actorType,
         );
     }
 
@@ -83,6 +99,8 @@ final class RecordModuleLifecycleEvents
             subjectId: $event->moduleId,
             newState: ['module_id' => $event->moduleId, 'revision' => $event->revision],
             source: 'module-engine',
+            actorId: $event->actorId,
+            actorType: $event->actorType,
         );
     }
 
@@ -105,6 +123,8 @@ final class RecordModuleLifecycleEvents
                 'has_settings' => $event->settings !== null,
             ],
             source: 'management',
+            actorId: $event->actorId,
+            actorType: $event->actorType,
         );
     }
 
@@ -116,26 +136,40 @@ final class RecordModuleLifecycleEvents
         ?array $oldState = null,
         ?array $newState = null,
         string $source = 'unknown',
+        ?string $actorId = null,
+        ?string $actorType = null,
     ): void {
-        try {
-            $entry = AuditEntry::now(
-                id: AuditEntry::generateId(),
-                actor: new AuditActor(type: AuditActor::TYPE_SYSTEM, id: 'system'),
-                target: new AuditTarget(
-                    botId: $botId,
-                    subjectType: $subjectType,
-                    subjectId: $subjectId,
-                ),
-                operation: $operation,
-                oldState: $oldState,
-                newState: $newState,
-                source: $source,
-                correlationId: $this->correlation->id(),
-            );
+        $entry = AuditEntry::now(
+            id: AuditEntry::generateId(),
+            actor: new AuditActor(
+                type: $actorType ?? AuditActor::TYPE_SYSTEM,
+                id: $actorId ?? 'system',
+            ),
+            target: new AuditTarget(
+                botId: $botId,
+                subjectType: $subjectType,
+                subjectId: $subjectId,
+            ),
+            operation: $operation,
+            oldState: $oldState,
+            newState: $newState,
+            source: $source,
+            correlationId: $this->correlation->id(),
+        );
 
+        try {
             $this->sink->append($entry);
         } catch (\Throwable $e) {
-            Log::warning('Failed to record lifecycle audit entry', [
+            $policy = $this->policyResolver->resolve($entry);
+
+            if ($policy === AuditFailurePolicy::FailClosed) {
+                throw new \BAGArt\TelegramBotAudit\AuditException(
+                    "Audit append failed for operation '{$operation}': {$e->getMessage()}",
+                    previous: $e,
+                );
+            }
+
+            Log::warning('Audit append failed (fail_open)', [
                 'operation' => $operation,
                 'error' => $e->getMessage(),
             ]);

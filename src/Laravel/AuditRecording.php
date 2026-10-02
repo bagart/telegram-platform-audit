@@ -71,7 +71,7 @@ trait AuditRecording
         try {
             $sink->append($entry);
         } catch (\Throwable $e) {
-            $policy = $policyResolver->resolve($operation);
+            $policy = $policyResolver->resolve($entry);
 
             if ($policy === AuditFailurePolicy::FailClosed) {
                 throw new \BAGArt\TelegramBotAudit\AuditException(

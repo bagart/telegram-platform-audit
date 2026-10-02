@@ -9,6 +9,8 @@ use BAGArt\TelegramBotAudit\AuditQueryContract;
 use BAGArt\TelegramBotAudit\AuditSinkContract;
 use BAGArt\TelegramBotAudit\CorrelationContext;
 use BAGArt\TelegramBotAudit\DefaultAuditFailurePolicyResolver;
+use BAGArt\TelegramBotAudit\Laravel\AuditCounters;
+use BAGArt\TelegramBotAudit\Laravel\CountingAuditSink;
 use BAGArt\TelegramBotAudit\Laravel\DatabaseAuditQuery;
 use BAGArt\TelegramBotAudit\Laravel\DatabaseAuditSink;
 use BAGArt\TelegramBotAudit\MutableCorrelationContext;
@@ -23,7 +25,7 @@ final class AuditServiceProviderTest extends TestCase
     {
         $sink = $this->app->make(AuditSinkContract::class);
 
-        self::assertInstanceOf(DatabaseAuditSink::class, $sink);
+        self::assertInstanceOf(CountingAuditSink::class, $sink);
     }
 
     public function test_bind_audit_query(): void
@@ -60,5 +62,12 @@ final class AuditServiceProviderTest extends TestCase
         $second = $this->app->make(AuditSinkContract::class);
 
         self::assertSame($first, $second);
+    }
+
+    public function test_bind_audit_counters(): void
+    {
+        $counters = $this->app->make(AuditCounters::class);
+
+        self::assertInstanceOf(AuditCounters::class, $counters);
     }
 }

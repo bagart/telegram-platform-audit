@@ -9,6 +9,7 @@ use BAGArt\TelegramBotAudit\AuditSinkContract;
 use BAGArt\TelegramBotAudit\AuditQueryContract;
 use BAGArt\TelegramBotAudit\AuditQueryFilter;
 use BAGArt\TelegramBotAudit\InMemoryAuditSink;
+use BAGArt\TelegramBotAudit\Laravel\AuditCounters;
 use BAGArt\TelegramBotAudit\Laravel\AuditHealthProbe;
 use BAGArt\TelegramBotAudit\Laravel\AuditMetricsCollector;
 
@@ -79,7 +80,7 @@ it('collects metrics by operation and source', function () {
         source: 'engine',
     ));
 
-    $collector = new AuditMetricsCollector($this->query);
+    $collector = new AuditMetricsCollector($this->query, new AuditCounters());
     $metrics = $collector->collect();
 
     expect($metrics['by_operation'])->toHaveKeys(['bot.created', 'module.enabled'])

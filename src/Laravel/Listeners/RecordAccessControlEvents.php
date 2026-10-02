@@ -6,25 +6,32 @@ namespace BAGArt\TelegramBotAudit\Laravel\Listeners;
 
 use BAGArt\TelegramBotAudit\AuditActor;
 use BAGArt\TelegramBotAudit\AuditEntry;
+use BAGArt\TelegramBotAudit\AuditFailurePolicy;
+use BAGArt\TelegramBotAudit\AuditFailurePolicyResolver;
 use BAGArt\TelegramBotAudit\AuditSinkContract;
 use BAGArt\TelegramBotAudit\AuditTarget;
 use BAGArt\TelegramBotAudit\CorrelationContext;
 use BAGArt\TelegramBotAccess\Events\GrantCreated;
 use BAGArt\TelegramBotAccess\Events\GrantRevoked;
+use BAGArt\TelegramBotAccess\Grant;
+use BAGArt\TelegramBotAccess\GrantScope;
 use Illuminate\Support\Facades\Log;
 
 /**
  * Records audit entries for access control events.
  *
  * Listens for GrantCreated and GrantRevoked domain events and
- * appends them to the audit sink.
+ * appends them to the audit sink. Respects failure policy: on
+ * FailClosed, rethrows as AuditException to block the operation.
  */
 final class RecordAccessControlEvents
 {
     public function __construct(
         private readonly AuditSinkContract $sink,
         private readonly CorrelationContext $correlation,
-    ) {}
+        private readonly AuditFailurePolicyResolver $policyResolver,
+    ) {
+    }
 
     public function handleGrantCreated(GrantCreated $event): void
     {
@@ -33,12 +40,7 @@ final class RecordAccessControlEvents
             grant: $event->grant,
             actorType: AuditActor::TYPE_USER,
             actorId: $event->actor->subjectId,
-            newState: [
-                'effect' => $event->grant->effect->value,
-                'capability' => $event->grant->capability,
-                'scope' => $event->grant->scope->value,
-                'chat_id' => $event->grant->chatId,
-            ],
+            newState: $this->grantState($event->grant),
         );
     }
 
@@ -49,13 +51,30 @@ final class RecordAccessControlEvents
             grant: $event->grant,
             actorType: AuditActor::TYPE_USER,
             actorId: $event->actor->subjectId,
-            oldState: [
-                'effect' => $event->grant->effect->value,
-                'capability' => $event->grant->capability,
-                'scope' => $event->grant->scope->value,
-                'chat_id' => $event->grant->chatId,
-            ],
+            oldState: $this->grantState($event->grant),
         );
+    }
+
+    /**
+     * Snapshot of the grant's audited fields; workspace-scope grants also
+     * carry their workspace_id (existing keys are always present).
+     *
+     * @return array<string, mixed>
+     */
+    private function grantState(Grant $grant): array
+    {
+        $state = [
+            'effect' => $grant->effect->value,
+            'capability' => $grant->capability,
+            'scope' => $grant->scope->value,
+            'chat_id' => $grant->chatId,
+        ];
+
+        if ($grant->scope === GrantScope::Workspace) {
+            $state['workspace_id'] = $grant->workspaceId;
+        }
+
+        return $state;
     }
 
     /**
@@ -70,29 +89,38 @@ final class RecordAccessControlEvents
         ?array $oldState = null,
         ?array $newState = null,
     ): void {
-        try {
-            $entry = new AuditEntry(
-                id: AuditEntry::generateId(),
-                actor: new AuditActor(
-                    type: $actorType,
-                    id: $actorId,
-                ),
-                target: new AuditTarget(
-                    botId: $grant->botId,
-                    subjectType: 'grant',
-                    subjectId: "{$grant->subjectId}:{$grant->capability}",
-                    chatId: $grant->chatId,
-                ),
-                operation: $operation,
-                oldState: $oldState,
-                newState: $newState,
-                source: 'access-module',
-                correlationId: $this->correlation->id(),
-            );
+        $entry = AuditEntry::now(
+            id: AuditEntry::generateId(),
+            actor: new AuditActor(
+                type: $actorType,
+                id: $actorId,
+            ),
+            target: new AuditTarget(
+                botId: $grant->botId,
+                subjectType: 'grant',
+                subjectId: "{$grant->subjectId}:{$grant->capability}",
+                chatId: $grant->chatId,
+            ),
+            operation: $operation,
+            oldState: $oldState,
+            newState: $newState,
+            source: 'access-module',
+            correlationId: $this->correlation->id(),
+        );
 
+        try {
             $this->sink->append($entry);
         } catch (\Throwable $e) {
-            Log::warning('Failed to record access control audit entry', [
+            $policy = $this->policyResolver->resolve($entry);
+
+            if ($policy === AuditFailurePolicy::FailClosed) {
+                throw new \BAGArt\TelegramBotAudit\AuditException(
+                    "Audit append failed for operation '{$operation}': {$e->getMessage()}",
+                    previous: $e,
+                );
+            }
+
+            Log::warning('Audit append failed (fail_open)', [
                 'operation' => $operation,
                 'error' => $e->getMessage(),
             ]);

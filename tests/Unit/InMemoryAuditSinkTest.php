@@ -48,7 +48,7 @@ final class InMemoryAuditSinkTest extends TestCase
     public function test_sink_has_no_mutation_api(): void
     {
         $methods = array_map(
-            static fn(\ReflectionMethod $method): string => $method->getName(),
+            static fn (\ReflectionMethod $method): string => $method->getName(),
             (new \ReflectionClass(InMemoryAuditSink::class))->getMethods(),
         );
 
@@ -61,7 +61,7 @@ final class InMemoryAuditSinkTest extends TestCase
         }
 
         $contractMethods = array_map(
-            static fn(\ReflectionMethod $method): string => $method->getName(),
+            static fn (\ReflectionMethod $method): string => $method->getName(),
             (new \ReflectionClass(AuditSinkContract::class))->getMethods(),
         );
         self::assertSame(['append'], $contractMethods);

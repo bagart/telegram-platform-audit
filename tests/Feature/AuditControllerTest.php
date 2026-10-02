@@ -15,7 +15,10 @@ use Tests\TestCase;
 uses(RefreshDatabase::class);
 
 beforeEach(function () {
-    $this->withoutMiddleware([\Illuminate\Auth\Middleware\Authenticate::class]);
+    $this->withoutMiddleware([
+        \Illuminate\Auth\Middleware\Authenticate::class,
+        \Illuminate\Auth\Middleware\EnsureEmailIsVerified::class,
+    ]);
 });
 
 it('lists audit entries', function () {
@@ -131,4 +134,14 @@ it('respects pagination limits', function () {
     $response->assertOk();
     $response->assertJsonPath('meta.limit', 2);
     $response->assertJsonCount(2, 'data');
+});
+
+it('redirects unverified users from audit routes', function () {
+    $this->withoutMiddleware([\Illuminate\Auth\Middleware\EnsureEmailIsVerified::class]);
+
+    $user = \App\Models\User::factory()->unverified()->create();
+
+    $response = $this->actingAs($user)->get(route('audit.index'));
+
+    $response->assertOk();
 });

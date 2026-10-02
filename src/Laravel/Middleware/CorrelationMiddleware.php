@@ -20,7 +20,8 @@ final class CorrelationMiddleware
 {
     public function __construct(
         private readonly CorrelationContext $context,
-    ) {}
+    ) {
+    }
 
     public function handle(Request $request, Closure $next): Response
     {

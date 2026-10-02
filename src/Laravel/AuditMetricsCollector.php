@@ -11,12 +11,16 @@ use BAGArt\TelegramBotAudit\AuditQueryFilter;
  * Audit metrics collector. Aggregates entry counts by operation, source,
  * and actor type for the last 24 hours. Results suitable for dashboard
  * rendering or health probe detail.
+ *
+ * Also exposes real-time in-memory counters via {@see counters()}.
  */
 final readonly class AuditMetricsCollector
 {
     public function __construct(
         private AuditQueryContract $query,
-    ) {}
+        private AuditCounters $counters,
+    ) {
+    }
 
     /**
      * @return array{
@@ -29,10 +33,10 @@ final readonly class AuditMetricsCollector
      */
     public function collect(): array
     {
-        $entries = $this->query->query(new AuditQueryFilter(
+        $entries = iterator_to_array($this->query->query(new AuditQueryFilter(
             after: (new \DateTimeImmutable('-1 day'))->format(\DateTimeImmutable::ATOM),
             limit: 1000,
-        ));
+        )));
 
         $byOperation = [];
         $bySource = [];
@@ -67,5 +71,13 @@ final readonly class AuditMetricsCollector
             'total_last_hour' => $totalLastHour,
             'total_last_day' => $totalLastDay,
         ];
+    }
+
+    /**
+     * Real-time in-memory counters (process-scoped, reset on reboot).
+     */
+    public function counters(): array
+    {
+        return $this->counters->snapshot();
     }
 }

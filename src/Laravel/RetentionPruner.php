@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace BAGArt\TelegramBotAudit\Laravel;
 
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Deletes audit entries older than the configured retention period.
@@ -38,6 +39,11 @@ final class RetentionPruner
                 ->table($this->table)
                 ->where('occurred_at', '<', $cutoff)
                 ->delete();
+
+            Log::warning('Audit pruning may break hash chain — run audit:verify after pruning', [
+                'pruned' => $count,
+                'retention_days' => $days,
+            ]);
         }
 
         return $count;

@@ -49,6 +49,10 @@ final class DatabaseAuditQuery implements AuditQueryContract
     {
         $query = DB::connection($this->connection)->table($this->table);
 
+        if ($filter->id !== null) {
+            $query->where('id', $filter->id);
+        }
+
         if ($filter->botId !== null) {
             $query->where('bot_id', $filter->botId);
         }
@@ -119,6 +123,8 @@ final class DatabaseAuditQuery implements AuditQueryContract
             correlationId: $row->correlation_id ?? null,
             sourceVersion: $row->source_version ?? null,
             metadata: $row->metadata !== null ? json_decode((string) $row->metadata, true, 512, JSON_THROW_ON_ERROR) : null,
+            hash: $row->hash ?? null,
+            prevHash: $row->prev_hash ?? null,
         );
     }
 }
