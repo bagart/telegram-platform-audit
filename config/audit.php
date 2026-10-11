@@ -37,7 +37,8 @@ return [
     |--------------------------------------------------------------------------
     |
     | Default policy when audit append fails. Can be overridden per-operation
-    | in the 'operations' array below.
+    | in the 'operations' array below, or per-prefix in the 'prefixes' array
+    | (declared order, first hit wins; exact 'operations' keys beat prefixes).
     |
     | Supported values: "fail_open", "fail_closed".
     |
@@ -52,6 +53,12 @@ return [
             // 'bot.token.rotated' => 'fail_closed',
             // 'bot.deleted' => 'fail_closed',
         ],
+
+        // Prefix overrides (operation prefix => policy value), consulted after
+        // exact 'operations' keys and before the hardcoded platform arms.
+        // Declared order, first hit wins. Example: 'proxy.' => 'fail_closed'.
+        // Empty by default: module operations resolve to the default policy.
+        'prefixes' => [],
     ],
 
     /*

@@ -76,6 +76,78 @@ final class DefaultAuditFailurePolicyResolverTest extends TestCase
         self::assertSame(AuditFailurePolicy::FailClosed, $resolver->resolve($entry));
     }
 
+    public function test_configured_prefix_beats_hardcoded_arm(): void
+    {
+        $resolver = new DefaultAuditFailurePolicyResolver(
+            operationPrefixes: ['access.grant.' => 'fail_open'],
+        );
+
+        $entry = $this->entry('access.grant.created');
+        self::assertSame(AuditFailurePolicy::FailOpen, $resolver->resolve($entry));
+    }
+
+    public function test_exact_override_beats_prefix(): void
+    {
+        $resolver = new DefaultAuditFailurePolicyResolver(
+            operationOverrides: ['antispam.rule.created' => 'fail_closed'],
+            operationPrefixes: ['antispam.' => 'fail_open'],
+        );
+
+        $entry = $this->entry('antispam.rule.created');
+        self::assertSame(AuditFailurePolicy::FailClosed, $resolver->resolve($entry));
+
+        $entry = $this->entry('antispam.settings.changed');
+        self::assertSame(AuditFailurePolicy::FailOpen, $resolver->resolve($entry));
+    }
+
+    public function test_first_declared_prefix_wins(): void
+    {
+        $resolver = new DefaultAuditFailurePolicyResolver(
+            operationPrefixes: ['antispam.' => 'fail_open', 'antispam.rule.' => 'fail_closed'],
+        );
+
+        $entry = $this->entry('antispam.rule.created');
+        self::assertSame(AuditFailurePolicy::FailOpen, $resolver->resolve($entry));
+    }
+
+    public function test_module_prefix_maps_operations_to_fail_open(): void
+    {
+        $resolver = new DefaultAuditFailurePolicyResolver(
+            operationPrefixes: ['antispam.' => 'fail_open', 'proxy.' => 'fail_open'],
+        );
+
+        $entry = $this->entry('proxy.pool.created');
+        self::assertSame(AuditFailurePolicy::FailOpen, $resolver->resolve($entry));
+    }
+
+    public function test_module_operations_default_to_fail_open(): void
+    {
+        $resolver = new DefaultAuditFailurePolicyResolver();
+
+        self::assertSame(
+            AuditFailurePolicy::FailOpen,
+            $resolver->resolve($this->entry('antispam.rule.created')),
+        );
+        self::assertSame(
+            AuditFailurePolicy::FailOpen,
+            $resolver->resolve($this->entry('proxy.pool.created')),
+        );
+    }
+
+    public function test_empty_prefixes_leave_default_arms_unchanged(): void
+    {
+        $resolver = new DefaultAuditFailurePolicyResolver(operationPrefixes: []);
+
+        self::assertSame(
+            AuditFailurePolicy::FailClosed,
+            $resolver->resolve($this->entry('access.grant.created')),
+        );
+        self::assertSame(
+            AuditFailurePolicy::FailOpen,
+            $resolver->resolve($this->entry('custom.operation')),
+        );
+    }
+
     private function entry(string $operation): AuditEntry
     {
         return new AuditEntry(

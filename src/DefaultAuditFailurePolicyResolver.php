@@ -20,16 +20,27 @@ final class DefaultAuditFailurePolicyResolver implements AuditFailurePolicyResol
     /** @var array<string, AuditFailurePolicy> */
     private array $overrides;
 
+    /** @var array<string, AuditFailurePolicy> declared prefix => policy, first declared hit wins */
+    private array $prefixes = [];
+
     /**
      * @param  array<string, string>  $operationOverrides  operation => 'fail_open'|'fail_closed'
      * @param  string  $defaultPolicy  fallback policy for unmatched operations
+     * @param  array<string, string>  $operationPrefixes  operation prefix => 'fail_open'|'fail_closed';
+     *                                                    consulted after exact overrides,
+     *                                                    before the hardcoded arms
      */
     public function __construct(
         array $operationOverrides = [],
         private string $defaultPolicy = AuditFailurePolicy::FailOpen->value,
+        array $operationPrefixes = [],
     ) {
         foreach ($operationOverrides as $operation => $policy) {
             $this->overrides[$operation] = AuditFailurePolicy::from($policy);
+        }
+
+        foreach ($operationPrefixes as $prefix => $policy) {
+            $this->prefixes[$prefix] = AuditFailurePolicy::from($policy);
         }
     }
 
@@ -42,7 +53,14 @@ final class DefaultAuditFailurePolicyResolver implements AuditFailurePolicyResol
             return $this->overrides[$operation];
         }
 
-        // Prefix-based matching (most specific first)
+        // Config-declared prefixes, declared order, first hit wins
+        foreach ($this->prefixes as $prefix => $policy) {
+            if (str_starts_with($operation, $prefix)) {
+                return $policy;
+            }
+        }
+
+        // Hardcoded platform arms (most specific first)
         return match (true) {
             str_starts_with($operation, 'access.') => AuditFailurePolicy::FailClosed,
             str_starts_with($operation, 'bot.') => AuditFailurePolicy::FailClosed,

@@ -5,4 +5,4 @@
 
 | Topic | File | Summary |
 |---|---|---|
-| audit | [`audit.md`](audit.md) | Full architecture, model, observability, events, retention, config, DB schema, commands, API routes |
+| audit | [`audit.md`](audit.md) | Full architecture, model, observability, events, retention, config, DB schema, commands, API routes; module Events registrar (W-D3: contract, `auditEvent` verb, GenericModuleAuditListener, 108 dispatch sites) |
